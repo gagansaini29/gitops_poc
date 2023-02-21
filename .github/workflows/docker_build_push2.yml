@@ -1,0 +1,63 @@
+# Docker Build and Push 
+name: ci
+on:
+  push:
+    branches:
+      - "main"
+jobs: 
+  Docker_build_and_push:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v3
+      -
+        name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      -
+        name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: django/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/gitops:1.0
+
+# name: deploy
+# on:
+#   - push
+  deploy:
+    needs: Docker_build_and_push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          curl -LO "https://dl.k8s.io/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl.sha256"
+          echo "$(<kubectl.sha256) kubectl" | sha256sum --check            
+            sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+            kubectl version --client
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: update kubeconfig
+        run: aws eks update-kubeconfig --name k-g-gitops --region ap-south-1
+      - name: deployment to eks
+        run: |
+         kubectl get ns
+         kubectl apply -f django/kubernetes/dep.yml
+         kubectl apply -f django/kubernetes/service.yml
+         kubectl get pods
+       
+ 
